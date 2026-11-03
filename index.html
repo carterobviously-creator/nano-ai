@@ -1,18 +1,1111 @@
-<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>NanoAI</title>
-<style>*{box-sizing:border-box}body{margin:0;background:#060912;color:#edf7ff;font:15px system-ui;height:100vh;display:flex;flex-direction:column}.top{padding:14px 18px;border-bottom:1px solid #18324a;background:#09111d}.top b{color:#67e8f9;font-size:19px}.top span{float:right;color:#8ba6bb}.chat{flex:1;overflow:auto;padding:20px;display:flex;flex-direction:column;gap:12px}.m{max-width:780px;padding:12px 15px;border-radius:16px;white-space:pre-wrap;line-height:1.45}.ai{background:#0e1928;border:1px solid #193650}.user{align-self:flex-end;background:#123e58;border:1px solid #1d698f}.bottom{padding:14px;background:#09111d;border-top:1px solid #18324a}.row{max-width:900px;margin:auto;display:flex;gap:9px}textarea{flex:1;resize:none;background:#0d1825;color:white;border:1px solid #24445d;border-radius:14px;padding:13px;outline:none;min-height:52px}button{background:#31d7ed;color:#031015;border:0;border-radius:14px;padding:0 20px;font-weight:800;cursor:pointer}button:disabled{opacity:.4;cursor:not-allowed}.progress{height:3px;background:#102335}.progress i{display:block;height:100%;width:0;background:#31d7ed;transition:.15s}</style></head>
-<body><div class="top"><b>NanoAI</b><span id="status">Starting WASM model…</span></div><div class="progress"><i id="p"></i></div><main id="chat" class="chat"><div class="m ai">Loading the local model into RAM. This build deliberately uses CPU/WASM + uint8, not WebGPU.</div></main><div class="bottom"><div class="row"><textarea id="input" disabled placeholder="Message NanoAI…"></textarea><button id="send" disabled>Send</button></div></div>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NanoAI</title>
+
+<style>
+* {
+    box-sizing: border-box;
+}
+
+:root {
+    color-scheme: dark;
+    --bg: #06080d;
+    --panel: #0b0f17;
+    --panel2: #101722;
+    --border: #202b3a;
+    --text: #eef7ff;
+    --muted: #778599;
+    --cyan: #38e8ff;
+    --blue: #6477ff;
+    --green: #62ffa7;
+    --red: #ff5c78;
+}
+
+body {
+    margin: 0;
+    width: 100%;
+    height: 100vh;
+    overflow: hidden;
+    background:
+        radial-gradient(circle at 50% -20%, #153b4a 0%, transparent 35%),
+        radial-gradient(circle at 110% 100%, #251b52 0%, transparent 35%),
+        var(--bg);
+    color: var(--text);
+    font-family:
+        Inter,
+        ui-sans-serif,
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif;
+}
+
+#app {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+header {
+    height: 68px;
+    flex-shrink: 0;
+
+    display: flex;
+    align-items: center;
+    gap: 13px;
+
+    padding: 0 18px;
+
+    background: rgba(7, 10, 16, 0.72);
+    backdrop-filter: blur(20px);
+
+    border-bottom: 1px solid rgba(255,255,255,.07);
+}
+
+.logo {
+    width: 38px;
+    height: 38px;
+
+    border-radius: 12px;
+
+    background:
+        radial-gradient(circle at 30% 25%, white, #60f3ff 10%, transparent 25%),
+        linear-gradient(135deg, #17d9ff, #5d69ff);
+
+    box-shadow:
+        0 0 24px rgba(56,232,255,.28),
+        inset 0 0 10px rgba(255,255,255,.25);
+}
+
+.brand {
+    min-width: 0;
+}
+
+.brand-name {
+    font-weight: 720;
+    letter-spacing: -0.03em;
+    font-size: 17px;
+}
+
+.model-name {
+    color: var(--muted);
+    font-size: 11px;
+    margin-top: 2px;
+}
+
+.status {
+    margin-left: auto;
+
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    color: #a9b6c8;
+    font-size: 12px;
+}
+
+.dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+
+    background: #ffb84d;
+    box-shadow: 0 0 12px currentColor;
+}
+
+.dot.ready {
+    background: var(--green);
+}
+
+.dot.error {
+    background: var(--red);
+}
+
+#progress-wrap {
+    position: relative;
+    height: 3px;
+    flex-shrink: 0;
+    background: #0c1118;
+}
+
+#progress {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+
+    width: 0%;
+
+    background: linear-gradient(
+        90deg,
+        var(--cyan),
+        var(--blue)
+    );
+
+    box-shadow: 0 0 12px #38e8ff;
+    transition: width .15s linear;
+}
+
+#chat {
+    flex: 1;
+    overflow-y: auto;
+
+    padding:
+        32px
+        max(18px, calc((100% - 860px) / 2))
+        150px;
+}
+
+#welcome {
+    padding: 8vh 8px 30px;
+    max-width: 650px;
+}
+
+#welcome h1 {
+    font-size: clamp(36px, 6vw, 60px);
+    line-height: .95;
+
+    margin: 0 0 20px;
+
+    letter-spacing: -0.06em;
+
+    background:
+        linear-gradient(
+            100deg,
+            #ffffff 15%,
+            #70edff 50%,
+            #aaa3ff
+        );
+
+    -webkit-background-clip: text;
+    color: transparent;
+}
+
+#welcome p {
+    font-size: 15px;
+    line-height: 1.7;
+    color: #8b99ab;
+    max-width: 520px;
+}
+
+.message-row {
+    display: flex;
+    margin: 22px 0;
+    animation: appear .18s ease-out;
+}
+
+.message-row.user {
+    justify-content: flex-end;
+}
+
+.message {
+    max-width: min(720px, 88%);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+
+    font-size: 15px;
+    line-height: 1.6;
+}
+
+.user .message {
+    padding: 11px 15px;
+
+    border-radius:
+        17px
+        17px
+        5px
+        17px;
+
+    background:
+        linear-gradient(
+            135deg,
+            #334c6f,
+            #26344c
+        );
+
+    border: 1px solid #40526a;
+}
+
+.assistant .message {
+    width: 100%;
+
+    padding: 4px 2px;
+
+    color: #e3edf8;
+}
+
+.assistant-label {
+    color: var(--cyan);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .12em;
+    margin-bottom: 7px;
+}
+
+.error-message {
+    color: #ff91a4 !important;
+}
+
+footer {
+    position: absolute;
+
+    left: 0;
+    right: 0;
+    bottom: 0;
+
+    padding:
+        35px
+        18px
+        17px;
+
+    background:
+        linear-gradient(
+            transparent,
+            #06080d 35%
+        );
+}
+
+.composer {
+    margin: auto;
+    max-width: 850px;
+
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+
+    padding: 8px;
+
+    background: rgba(15,21,31,.94);
+
+    border: 1px solid #263344;
+    border-radius: 22px;
+
+    box-shadow:
+        0 18px 70px rgba(0,0,0,.5),
+        0 0 0 1px rgba(255,255,255,.025) inset;
+}
+
+textarea {
+    flex: 1;
+
+    min-height: 48px;
+    max-height: 160px;
+
+    resize: none;
+
+    padding: 13px 12px;
+
+    border: 0;
+    outline: 0;
+
+    background: transparent;
+    color: white;
+
+    font: inherit;
+    line-height: 22px;
+}
+
+textarea::placeholder {
+    color: #667487;
+}
+
+button {
+    width: 44px;
+    height: 44px;
+
+    flex-shrink: 0;
+
+    border: 0;
+    border-radius: 14px;
+
+    cursor: pointer;
+
+    color: #001014;
+
+    background:
+        linear-gradient(
+            135deg,
+            #8af4ff,
+            #6293ff
+        );
+
+    font-size: 20px;
+
+    transition:
+        transform .12s,
+        opacity .12s;
+}
+
+button:hover {
+    transform: translateY(-1px);
+}
+
+button:active {
+    transform: scale(.95);
+}
+
+button:disabled {
+    cursor: default;
+    opacity: .35;
+    transform: none;
+}
+
+.hint {
+    text-align: center;
+    color: #4d5969;
+    font-size: 10px;
+    margin-top: 8px;
+}
+
+@keyframes appear {
+    from {
+        opacity: 0;
+        transform: translateY(5px);
+    }
+
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+::-webkit-scrollbar {
+    width: 7px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #273342;
+    border-radius: 10px;
+}
+
+@media(max-width: 600px) {
+
+    header {
+        padding: 0 12px;
+    }
+
+    #chat {
+        padding-left: 14px;
+        padding-right: 14px;
+    }
+
+    .model-name {
+        max-width: 170px;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<div id="app">
+
+    <header>
+
+        <div class="logo"></div>
+
+        <div class="brand">
+            <div class="brand-name">NanoAI</div>
+            <div class="model-name">
+                Qwen2.5 1.5B • Local
+            </div>
+        </div>
+
+        <div class="status">
+            <span id="statusText">Starting…</span>
+            <span id="statusDot" class="dot"></span>
+        </div>
+
+    </header>
+
+    <div id="progress-wrap">
+        <div id="progress"></div>
+    </div>
+
+    <main id="chat">
+
+        <section id="welcome">
+
+            <h1>
+                Local AI.<br>
+                No server.
+            </h1>
+
+            <p id="welcomeText">
+                NanoAI is loading Qwen2.5 1.5B directly
+                into your browser. The first startup is
+                large because the model has to be downloaded.
+            </p>
+
+        </section>
+
+    </main>
+
+    <footer>
+
+        <div class="composer">
+
+            <textarea
+                id="input"
+                rows="1"
+                placeholder="Loading local model…"
+                disabled
+            ></textarea>
+
+            <button
+                id="send"
+                type="button"
+                disabled
+                aria-label="Send"
+            >
+                ↑
+            </button>
+
+        </div>
+
+        <div class="hint">
+            Enter to send • Shift + Enter for newline
+        </div>
+
+    </footer>
+
+</div>
+
+
 <script type="module">
-import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1';
-env.allowLocalModels=false;
-const $=x=>document.getElementById(x), status=$('status'), bar=$('p'), input=$('input'), send=$('send'), chat=$('chat');
-let gen=null, history=[{role:'system',content:'You are NanoAI, a concise helpful assistant.'}];
-function msg(text,who){const d=document.createElement('div');d.className='m '+who;d.textContent=text;chat.appendChild(d);chat.scrollTop=chat.scrollHeight;return d}
-try{
- gen=await pipeline('text-generation','HuggingFaceTB/SmolLM2-135M-Instruct',{device:'wasm',dtype:'uint8',progress_callback:x=>{if(x.status==='progress'&&Number.isFinite(x.progress)){bar.style.width=Math.max(0,Math.min(100,x.progress))+'%';status.textContent='Loading model… '+Math.round(x.progress)+'%'}else if(x.status==='ready')status.textContent='Preparing…';}});
- bar.style.width='100%';status.textContent='Local • WASM • uint8';input.disabled=false;send.disabled=false;input.focus();msg('Ready. No WebGPU this time. 👹🚫','ai');
-}catch(e){status.textContent='Model load failed';msg('Load error: '+(e?.message||e),'ai')}
-async function go(){const text=input.value.trim();if(!text||!gen)return;input.value='';input.disabled=send.disabled=true;msg(text,'user');history.push({role:'user',content:text});const bubble=msg('Thinking…','ai');
- try{const out=await gen(history,{max_new_tokens:96,do_sample:false,repetition_penalty:1.08});let answer='';const g=out?.[0]?.generated_text;if(Array.isArray(g)){const last=[...g].reverse().find(x=>x.role==='assistant');answer=last?.content||''}else if(typeof g==='string'){answer=g.replace(/^.*?<\|assistant\|>/s,'').trim()}if(!answer)answer='(No response generated.)';bubble.textContent=answer;history.push({role:'assistant',content:answer});}catch(e){bubble.textContent='Generation error: '+(e?.message||e)}finally{input.disabled=send.disabled=false;input.focus()}}
-send.addEventListener('click',go);input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();go()}});
-</script></body></html>
+
+import {
+    AutoTokenizer,
+    AutoModelForCausalLM,
+    TextStreamer
+} from
+"https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1";
+
+
+/* ---------------------------------------------------------
+   CONFIG
+--------------------------------------------------------- */
+
+const MODEL =
+    "onnx-community/Qwen2.5-1.5B-Instruct";
+
+const MAX_NEW_TOKENS = 256;
+
+const SYSTEM_PROMPT =
+    "You are NanoAI, a helpful local AI assistant. " +
+    "Answer clearly and naturally. " +
+    "Keep answers reasonably concise unless asked for detail.";
+
+
+/* ---------------------------------------------------------
+   ELEMENTS
+--------------------------------------------------------- */
+
+const chat =
+    document.getElementById("chat");
+
+const input =
+    document.getElementById("input");
+
+const send =
+    document.getElementById("send");
+
+const progress =
+    document.getElementById("progress");
+
+const statusText =
+    document.getElementById("statusText");
+
+const statusDot =
+    document.getElementById("statusDot");
+
+const welcome =
+    document.getElementById("welcome");
+
+const welcomeText =
+    document.getElementById("welcomeText");
+
+
+/* ---------------------------------------------------------
+   STATE
+--------------------------------------------------------- */
+
+let tokenizer = null;
+let model = null;
+
+let busy = false;
+
+let history = [
+    {
+        role: "system",
+        content: SYSTEM_PROMPT
+    }
+];
+
+
+/* ---------------------------------------------------------
+   UI
+--------------------------------------------------------- */
+
+function setStatus(text, type = "") {
+
+    statusText.textContent = text;
+
+    statusDot.className =
+        "dot" + (type ? " " + type : "");
+
+}
+
+
+function addMessage(role, text = "") {
+
+    const row =
+        document.createElement("div");
+
+    row.className =
+        "message-row " +
+        (role === "user"
+            ? "user"
+            : "assistant");
+
+
+    const message =
+        document.createElement("div");
+
+    message.className = "message";
+
+
+    if (role === "assistant") {
+
+        const label =
+            document.createElement("div");
+
+        label.className =
+            "assistant-label";
+
+        label.textContent =
+            "NanoAI";
+
+        message.appendChild(label);
+
+
+        const content =
+            document.createElement("div");
+
+        content.className =
+            "assistant-content";
+
+        content.textContent = text;
+
+        message.appendChild(content);
+
+        row.appendChild(message);
+        chat.appendChild(row);
+
+        scrollDown();
+
+        return content;
+
+    }
+
+
+    message.textContent = text;
+
+    row.appendChild(message);
+
+    chat.appendChild(row);
+
+    scrollDown();
+
+    return message;
+
+}
+
+
+function showError(text) {
+
+    const box =
+        addMessage(
+            "assistant",
+            "Error: " + text
+        );
+
+    box.classList.add(
+        "error-message"
+    );
+
+}
+
+
+function scrollDown() {
+
+    requestAnimationFrame(() => {
+
+        chat.scrollTop =
+            chat.scrollHeight;
+
+    });
+
+}
+
+
+/* ---------------------------------------------------------
+   TEXTAREA AUTO SIZE
+--------------------------------------------------------- */
+
+function resizeInput() {
+
+    input.style.height = "auto";
+
+    input.style.height =
+        Math.min(
+            input.scrollHeight,
+            160
+        ) + "px";
+
+}
+
+
+input.addEventListener(
+    "input",
+    resizeInput
+);
+
+
+/* ---------------------------------------------------------
+   MODEL DOWNLOAD PROGRESS
+--------------------------------------------------------- */
+
+function progressCallback(data) {
+
+    if (!data) return;
+
+
+    if (
+        data.status === "progress" &&
+        typeof data.progress === "number"
+    ) {
+
+        const p =
+            Math.max(
+                0,
+                Math.min(
+                    100,
+                    data.progress
+                )
+            );
+
+        progress.style.width =
+            p + "%";
+
+        setStatus(
+            "Loading " +
+            Math.round(p) +
+            "%"
+        );
+
+    }
+
+
+    if (data.status === "ready") {
+
+        progress.style.width =
+            "100%";
+
+    }
+
+}
+
+
+/* ---------------------------------------------------------
+   LOAD MODEL
+
+   Start with WASM + q4.
+
+   This is intentionally NOT WebGPU right now.
+   We're eliminating GPU weirdness first.
+--------------------------------------------------------- */
+
+async function loadModel() {
+
+    try {
+
+        setStatus("Tokenizer…");
+
+        tokenizer =
+            await AutoTokenizer.from_pretrained(
+                MODEL,
+                {
+                    progress_callback:
+                        progressCallback
+                }
+            );
+
+
+        setStatus("Model…");
+
+
+        model =
+            await AutoModelForCausalLM.from_pretrained(
+                MODEL,
+                {
+                    device: "wasm",
+
+                    dtype: "q4",
+
+                    progress_callback:
+                        progressCallback
+                }
+            );
+
+
+        progress.style.width =
+            "100%";
+
+
+        setTimeout(() => {
+
+            progress.style.opacity =
+                "0";
+
+        }, 700);
+
+
+        setStatus(
+            "Ready",
+            "ready"
+        );
+
+
+        input.disabled = false;
+        send.disabled = false;
+
+        input.placeholder =
+            "Message NanoAI…";
+
+
+        welcomeText.textContent =
+            "Qwen2.5 1.5B is loaded locally. " +
+            "Messages are generated on this device.";
+
+
+        input.focus();
+
+
+    } catch (error) {
+
+        console.error(error);
+
+        setStatus(
+            "Load failed",
+            "error"
+        );
+
+        welcomeText.textContent =
+            "Model failed to load. Open DevTools " +
+            "and check the Console for the exact error.";
+
+        showError(
+            error?.message ||
+            String(error)
+        );
+
+    }
+
+}
+
+
+/* ---------------------------------------------------------
+   GENERATION
+--------------------------------------------------------- */
+
+async function generate() {
+
+    if (busy) return;
+
+    const text =
+        input.value.trim();
+
+    if (!text) return;
+
+    if (!model || !tokenizer) {
+
+        showError(
+            "The model is not loaded yet."
+        );
+
+        return;
+
+    }
+
+
+    busy = true;
+
+    send.disabled = true;
+    input.disabled = true;
+
+
+    if (welcome) {
+
+        welcome.style.display =
+            "none";
+
+    }
+
+
+    addMessage(
+        "user",
+        text
+    );
+
+
+    history.push({
+        role: "user",
+        content: text
+    });
+
+
+    input.value = "";
+
+    resizeInput();
+
+
+    const outputBox =
+        addMessage(
+            "assistant",
+            ""
+        );
+
+
+    setStatus(
+        "Thinking…",
+        "ready"
+    );
+
+
+    try {
+
+        /*
+            USE THE MODEL'S OWN CHAT TEMPLATE.
+
+            This is the important part.
+
+            We are NOT manually writing:
+            <user>
+            <assistant>
+            etc.
+        */
+
+        const prompt =
+            tokenizer.apply_chat_template(
+                history,
+                {
+                    tokenize: false,
+                    add_generation_prompt: true
+                }
+            );
+
+
+        /*
+            Tokenize the complete chat prompt.
+        */
+
+        const inputs =
+            tokenizer(
+                prompt,
+                {
+                    add_special_tokens: false,
+                    return_tensor: true
+                }
+            );
+
+
+        /*
+            Remember how many tokens belong to
+            the INPUT.
+
+            After generation we remove them so
+            decoding contains ONLY NanoAI's reply.
+        */
+
+        const inputLength =
+            inputs.input_ids.dims[
+                inputs.input_ids.dims.length - 1
+            ];
+
+
+        const output =
+            await model.generate({
+
+                ...inputs,
+
+                max_new_tokens:
+                    MAX_NEW_TOKENS,
+
+                do_sample: false,
+
+                repetition_penalty:
+                    1.08
+
+            });
+
+
+        /*
+            model.generate() returns input + output.
+
+            Slice away the input tokens.
+        */
+
+        const generated =
+            output.slice(
+                null,
+                [
+                    inputLength,
+                    null
+                ]
+            );
+
+
+        /*
+            Decode ONLY the newly generated tokens.
+        */
+
+        const decoded =
+            tokenizer.batch_decode(
+                generated,
+                {
+                    skip_special_tokens: true
+                }
+            );
+
+
+        const reply =
+            (decoded[0] || "")
+            .trim();
+
+
+        outputBox.textContent =
+            reply ||
+            "(The model returned an empty response.)";
+
+
+        history.push({
+            role: "assistant",
+            content:
+                reply ||
+                "(empty response)"
+        });
+
+
+        /*
+            Prevent chat context from growing forever.
+
+            Keep system prompt + recent messages.
+        */
+
+        if (history.length > 13) {
+
+            history = [
+
+                history[0],
+
+                ...history.slice(-12)
+
+            ];
+
+        }
+
+
+        setStatus(
+            "Ready",
+            "ready"
+        );
+
+
+    } catch (error) {
+
+        console.error(error);
+
+        outputBox.textContent =
+            "Generation error: " +
+            (
+                error?.message ||
+                String(error)
+            );
+
+        outputBox.classList.add(
+            "error-message"
+        );
+
+        setStatus(
+            "Error",
+            "error"
+        );
+
+    } finally {
+
+        busy = false;
+
+        input.disabled = false;
+        send.disabled = false;
+
+        input.focus();
+
+        scrollDown();
+
+    }
+
+}
+
+
+/* ---------------------------------------------------------
+   EVENTS
+--------------------------------------------------------- */
+
+send.addEventListener(
+    "click",
+    generate
+);
+
+
+input.addEventListener(
+    "keydown",
+    event => {
+
+        if (
+            event.key === "Enter" &&
+            !event.shiftKey
+        ) {
+
+            event.preventDefault();
+
+            generate();
+
+        }
+
+    }
+);
+
+
+/* ---------------------------------------------------------
+   GO
+--------------------------------------------------------- */
+
+loadModel();
+
+</script>
+
+</body>
+</html>
